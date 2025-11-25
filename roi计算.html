@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>保本 ROI 计算器</title>
+    <style>
+        :root {
+            color-scheme: light dark;
+            --light-bg: #f5f7fb;
+            --light-card: #ffffff;
+            --light-text: #1f2933;
+            --light-muted: #6b7280;
+            --light-border: #e5e7eb;
+            --dark-bg: #0f172a;
+            --dark-card: #1f2937;
+            --dark-text: #f8fafc;
+            --dark-muted: #cbd5f5;
+            --dark-border: #374151;
+            --accent: #3b82f6;
+            --accent-dark: #2563eb;
+            --success: #16a34a;
+            --error: #dc2626;
+        }
+
+        [data-theme="light"] {
+            --bg: var(--light-bg);
+            --card: var(--light-card);
+            --text: var(--light-text);
+            --muted: var(--light-muted);
+            --border: var(--light-border);
+        }
+
+        [data-theme="dark"] {
+            --bg: var(--dark-bg);
+            --card: var(--dark-card);
+            --text: var(--dark-text);
+            --muted: var(--dark-muted);
+            --border: var(--dark-border);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem 1rem;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .card {
+            width: min(520px, 100%);
+            background: var(--card);
+            border-radius: 24px;
+            padding: 2.5rem;
+            box-shadow: 0 35px 60px rgba(15, 23, 42, 0.15);
+            border: 1px solid var(--border);
+            transition: background 0.3s ease, border 0.3s ease;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+        }
+
+        h1 {
+            font-size: 1.75rem;
+            margin: 0;
+        }
+
+        .subtitle {
+            color: var(--muted);
+            margin-top: 0.5rem;
+            font-size: 0.95rem;
+        }
+
+        .theme-toggle {
+            background: rgba(59, 130, 246, 0.12);
+            border: none;
+            color: var(--accent);
+            padding: 0.65rem 1.3rem;
+            border-radius: 999px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s ease;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(59, 130, 246, 0.2);
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 0.35rem;
+        }
+
+        .input-group {
+            margin-bottom: 1.5rem;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.85rem 1rem;
+            border-radius: 14px;
+            border: 1px solid var(--border);
+            background: transparent;
+            color: var(--text);
+            font-size: 1rem;
+            transition: border 0.2s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+        }
+
+        .results {
+            margin-top: 2rem;
+            border-radius: 20px;
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            display: grid;
+            gap: 1.2rem;
+        }
+
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .result-title {
+            font-size: 0.95rem;
+            color: var(--muted);
+        }
+
+        .result-value {
+            font-size: 1.35rem;
+            font-weight: 700;
+        }
+
+        .hint {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: var(--muted);
+        }
+
+        .alert {
+            margin-top: 1rem;
+            padding: 0.85rem 1rem;
+            border-radius: 14px;
+            background: rgba(220, 38, 38, 0.1);
+            color: var(--error);
+            display: none;
+        }
+
+        .alert.visible {
+            display: block;
+        }
+
+        @media (max-width: 600px) {
+            .card {
+                padding: 1.75rem;
+            }
+
+            h1 {
+                font-size: 1.4rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="header">
+            <div>
+                <h1>保本 ROI 计算器</h1>
+                <p class="subtitle">输入售价与成本，自动获取毛利率与保本 ROI</p>
+            </div>
+            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">切换模式</button>
+        </div>
+
+        <div class="input-group">
+            <label for="sellingPrice">售价</label>
+            <input type="number" id="sellingPrice" placeholder="请输入售价（元）" min="0" step="0.01">
+        </div>
+
+        <div class="input-group">
+            <label for="costPrice">成本</label>
+            <input type="number" id="costPrice" placeholder="请输入成本（元）" min="0" step="0.01">
+        </div>
+
+        <div class="alert" id="alertBox">提示：售价必须大于成本，且售价需大于 0</div>
+
+        <div class="results">
+            <div class="result-item">
+                <span class="result-title">利润</span>
+                <span class="result-value" id="profitValue">—</span>
+            </div>
+            <div class="result-item">
+                <span class="result-title">毛利率</span>
+                <span class="result-value" id="marginValue">—</span>
+            </div>
+            <div class="result-item">
+                <span class="result-title">保本 ROI</span>
+                <span class="result-value" id="roiValue">—</span>
+            </div>
+        </div>
+
+        <p class="hint">
+            保本 ROI = 1 ÷ 毛利率，其中毛利率 = 利润 ÷ 售价，利润 = 售价 - 成本。
+        </p>
+    </div>
+
+    <script>
+        const sellingInput = document.getElementById('sellingPrice');
+        const costInput = document.getElementById('costPrice');
+        const profitValue = document.getElementById('profitValue');
+        const marginValue = document.getElementById('marginValue');
+        const roiValue = document.getElementById('roiValue');
+        const alertBox = document.getElementById('alertBox');
+        const themeToggle = document.getElementById('themeToggle');
+        const root = document.documentElement;
+
+        const formatPercent = (value) => (value * 100).toFixed(2) + '%';
+
+        const compute = () => {
+            const selling = parseFloat(sellingInput.value);
+            const cost = parseFloat(costInput.value);
+
+            if (Number.isNaN(selling) || Number.isNaN(cost)) {
+                profitValue.textContent = '—';
+                marginValue.textContent = '—';
+                roiValue.textContent = '—';
+                alertBox.classList.remove('visible');
+                return;
+            }
+
+            if (selling <= cost || selling <= 0) {
+                alertBox.classList.add('visible');
+                profitValue.textContent = '—';
+                marginValue.textContent = '—';
+                roiValue.textContent = '—';
+                return;
+            }
+
+            alertBox.classList.remove('visible');
+            const profit = selling - cost;
+            const margin = profit / selling;
+            const roi = 1 / margin;
+
+            profitValue.textContent = profit.toFixed(2) + ' 元';
+            marginValue.textContent = formatPercent(margin);
+            roiValue.textContent = roi.toFixed(2);
+        };
+
+        const toggleTheme = () => {
+            const current = root.getAttribute('data-theme');
+            const next = current === 'light' ? 'dark' : 'light';
+            root.setAttribute('data-theme', next);
+            themeToggle.textContent = next === 'light' ? '切换模式' : '切换模式';
+        };
+
+        sellingInput.addEventListener('input', compute);
+        costInput.addEventListener('input', compute);
+        themeToggle.addEventListener('click', toggleTheme);
+
+        // 初始化记住系统偏好
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+            root.setAttribute('data-theme', 'dark');
+        }
+    </script>
+</body>
+</html>
+
