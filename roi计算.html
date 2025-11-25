@@ -56,8 +56,14 @@
             transition: background 0.3s ease, color 0.3s ease;
         }
 
+        .app {
+            width: min(1200px, 100%);
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+        }
+
         .card {
-            width: min(520px, 100%);
             background: var(--card);
             border-radius: 24px;
             padding: 2.5rem;
@@ -170,6 +176,44 @@
             display: block;
         }
 
+        .section-title {
+            margin: 0 0 1rem;
+            font-size: 1.2rem;
+        }
+
+        .festival-list,
+        .timezone-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .festival-item,
+        .timezone-item {
+            padding: 1rem 1.1rem;
+            border-radius: 18px;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+
+        .festival-name,
+        .timezone-name {
+            font-weight: 600;
+        }
+
+        .festival-meta,
+        .timezone-meta {
+            color: var(--muted);
+            font-size: 0.9rem;
+        }
+
+        .timezone-time {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+
         @media (max-width: 600px) {
             .card {
                 padding: 1.75rem;
@@ -182,45 +226,63 @@
     </style>
 </head>
 <body>
-    <div class="card">
-        <div class="header">
-            <div>
-                <h1>保本 ROI 计算器</h1>
-                <p class="subtitle">输入售价与成本，自动获取毛利率与保本 ROI</p>
+    <div class="app">
+        <div class="card calculator-card">
+            <div class="header">
+                <div>
+                    <h1>保本 ROI 计算器</h1>
+                    <p class="subtitle">输入售价与成本，自动获取毛利率与保本 ROI</p>
+                </div>
+                <button class="theme-toggle" id="themeToggle" aria-label="切换主题">切换模式</button>
             </div>
-            <button class="theme-toggle" id="themeToggle" aria-label="切换主题">切换模式</button>
+
+            <div class="input-group">
+                <label for="sellingPrice">售价</label>
+                <input type="number" id="sellingPrice" placeholder="请输入售价（元）" min="0" step="0.01">
+            </div>
+
+            <div class="input-group">
+                <label for="costPrice">成本</label>
+                <input type="number" id="costPrice" placeholder="请输入成本（元）" min="0" step="0.01">
+            </div>
+
+            <div class="alert" id="alertBox">提示：售价必须大于成本，且售价需大于 0</div>
+
+            <div class="results">
+                <div class="result-item">
+                    <span class="result-title">利润</span>
+                    <span class="result-value" id="profitValue">—</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-title">毛利率</span>
+                    <span class="result-value" id="marginValue">—</span>
+                </div>
+                <div class="result-item">
+                    <span class="result-title">保本 ROI</span>
+                    <span class="result-value" id="roiValue">—</span>
+                </div>
+            </div>
+
+            <p class="hint">
+                保本 ROI = 1 ÷ 毛利率，其中毛利率 = 利润 ÷ 售价，利润 = 售价 - 成本。
+            </p>
         </div>
 
-        <div class="input-group">
-            <label for="sellingPrice">售价</label>
-            <input type="number" id="sellingPrice" placeholder="请输入售价（元）" min="0" step="0.01">
+        <div class="card info-card">
+            <section>
+                <h2 class="section-title">节日倒计时</h2>
+                <div class="festival-list" id="festivalList">
+                    <!-- 节日数据填充 -->
+                </div>
+            </section>
+
+            <section style="margin-top: 2rem;">
+                <h2 class="section-title">意大利时间与时差</h2>
+                <div class="timezone-list" id="timezoneList">
+                    <!-- 时区数据填充 -->
+                </div>
+            </section>
         </div>
-
-        <div class="input-group">
-            <label for="costPrice">成本</label>
-            <input type="number" id="costPrice" placeholder="请输入成本（元）" min="0" step="0.01">
-        </div>
-
-        <div class="alert" id="alertBox">提示：售价必须大于成本，且售价需大于 0</div>
-
-        <div class="results">
-            <div class="result-item">
-                <span class="result-title">利润</span>
-                <span class="result-value" id="profitValue">—</span>
-            </div>
-            <div class="result-item">
-                <span class="result-title">毛利率</span>
-                <span class="result-value" id="marginValue">—</span>
-            </div>
-            <div class="result-item">
-                <span class="result-title">保本 ROI</span>
-                <span class="result-value" id="roiValue">—</span>
-            </div>
-        </div>
-
-        <p class="hint">
-            保本 ROI = 1 ÷ 毛利率，其中毛利率 = 利润 ÷ 售价，利润 = 售价 - 成本。
-        </p>
     </div>
 
     <script>
@@ -231,9 +293,24 @@
         const roiValue = document.getElementById('roiValue');
         const alertBox = document.getElementById('alertBox');
         const themeToggle = document.getElementById('themeToggle');
+        const festivalList = document.getElementById('festivalList');
+        const timezoneList = document.getElementById('timezoneList');
         const root = document.documentElement;
 
         const formatPercent = (value) => (value * 100).toFixed(2) + '%';
+        const baseTimeZone = 'Asia/Shanghai';
+        const festivals = [
+            { name: '情人节', month: 2, day: 14 },
+            { name: '复活节', compute: (year) => getEasterDate(year) },
+            { name: '独立日', month: 7, day: 4 },
+            { name: '万圣节', month: 10, day: 31 },
+            { name: '感恩节', compute: (year) => getThanksgivingDate(year) },
+            { name: '圣诞节', month: 12, day: 25 }
+        ];
+
+        const timeZones = [
+            { country: '意大利', city: '罗马', zone: 'Europe/Rome' }
+        ];
 
         const compute = () => {
             const selling = parseFloat(sellingInput.value);
@@ -281,6 +358,130 @@
         if (prefersDark) {
             root.setAttribute('data-theme', 'dark');
         }
+
+        function getEasterDate(year) {
+            const a = year % 19;
+            const b = Math.floor(year / 100);
+            const c = year % 100;
+            const d = Math.floor(b / 4);
+            const e = b % 4;
+            const f = Math.floor((b + 8) / 25);
+            const g = Math.floor((b - f + 1) / 3);
+            const h = (19 * a + b - d - g + 15) % 30;
+            const i = Math.floor(c / 4);
+            const k = c % 4;
+            const l = (32 + 2 * e + 2 * i - h - k) % 7;
+            const m = Math.floor((a + 11 * h + 22 * l) / 451);
+            const month = Math.floor((h + l - 7 * m + 114) / 31);
+            const day = ((h + l - 7 * m + 114) % 31) + 1;
+            return new Date(year, month - 1, day);
+        }
+
+        function getNthWeekdayOfMonth(year, monthIndex, weekday, nth) {
+            const firstDay = new Date(year, monthIndex, 1).getDay();
+            const offset = (weekday - firstDay + 7) % 7;
+            return new Date(year, monthIndex, 1 + offset + 7 * (nth - 1));
+        }
+
+        function getThanksgivingDate(year) {
+            return getNthWeekdayOfMonth(year, 10, 4, 4); // 11 月第 4 个星期四
+        }
+
+        function getFestivalDate(festival, year) {
+            if (typeof festival.compute === 'function') {
+                return festival.compute(year);
+            }
+            return new Date(year, festival.month - 1, festival.day);
+        }
+
+        function getFestivalInfo(festival) {
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            let targetYear = now.getFullYear();
+            let date = getFestivalDate(festival, targetYear);
+            if (date < today) {
+                targetYear += 1;
+                date = getFestivalDate(festival, targetYear);
+            }
+            const diffDays = Math.ceil((date - today) / 86400000);
+            return { name: festival.name, date, diffDays };
+        }
+
+        function updateFestivals() {
+            const upcoming = festivals
+                .map(getFestivalInfo)
+                .sort((a, b) => a.date - b.date)
+                .slice(0, 4);
+
+            festivalList.innerHTML = upcoming.map(({ name, date, diffDays }) => {
+                const dateText = date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' });
+                const countdown = diffDays === 0 ? '今天就是节日！' : `还有 ${diffDays} 天`;
+                return `
+                    <div class="festival-item">
+                        <span class="festival-name">${name}</span>
+                        <span class="festival-meta">${date.getFullYear()} 年 ${dateText}</span>
+                        <span class="festival-countdown">${countdown}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function getOffsetMinutes(timeZone) {
+            const now = new Date();
+            const formatter = new Intl.DateTimeFormat('sv-SE', {
+                timeZone,
+                hour12: false,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+            const parts = formatter.formatToParts(now).reduce((acc, part) => {
+                if (part.type !== 'literal') {
+                    acc[part.type] = part.value;
+                }
+                return acc;
+            }, {});
+            const iso = `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`;
+            const converted = new Date(iso);
+            return Math.round((converted - now) / 60000);
+        }
+
+        function formatDiffHours(hours) {
+            const abs = Math.abs(hours);
+            const rounded = Number.isInteger(abs) ? abs : Math.round(abs * 10) / 10;
+            if (hours === 0) return '与北京时间一致';
+            return `比北京时间${hours > 0 ? '快' : '慢'} ${rounded} 小时`;
+        }
+
+        function updateTimeZones() {
+            const baseOffset = getOffsetMinutes(baseTimeZone);
+            const now = new Date();
+            timezoneList.innerHTML = timeZones.map(({ country, city, zone }) => {
+                const localTime = new Intl.DateTimeFormat('zh-CN', {
+                    timeZone: zone,
+                    hour12: false,
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                }).format(now);
+                const targetOffset = getOffsetMinutes(zone);
+                const diffHours = (targetOffset - baseOffset) / 60;
+                return `
+                    <div class="timezone-item">
+                        <span class="timezone-name">${country} · ${city}</span>
+                        <span class="timezone-time">${localTime}</span>
+                        <span class="timezone-meta">${formatDiffHours(diffHours)}</span>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        updateFestivals();
+        updateTimeZones();
+        setInterval(updateTimeZones, 1000);
     </script>
 </body>
 </html>
