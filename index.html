@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 粒子手势表白系统</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+        }
+
+        /* 隐藏视频源，只做分析用 */
+        #input_video {
+            display: none;
+        }
+        
+        /* 调试模式：显示摄像头画面 */
+        #input_video.debug {
+            display: block;
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 150px;
+            border: 2px solid #00ffff;
+            border-radius: 10px;
+            z-index: 1000;
+            opacity: 0.8;
+        }
+        
+        .debug-toggle {
+            position: fixed;
+            top: 20px;
+            right: 240px;
+            background: rgba(20, 20, 30, 0.9);
+            border: 1px solid #333;
+            border-radius: 5px;
+            padding: 5px 10px;
+            color: #aaa;
+            font-size: 12px;
+            cursor: pointer;
+            z-index: 1001;
+        }
+        
+        .debug-toggle:hover {
+            border-color: #00ffff;
+            color: #00ffff;
+        }
+
+        /* 左上角状态面板 */
+        .status-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(10, 20, 30, 0.8);
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            width: 200px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.1);
+        }
+
+        .status-title {
+            color: #00ffff;
+            font-weight: bold;
+            margin-bottom: 10px;
+            font-size: 16px;
+            transition: color 0.3s;
+        }
+
+        .status-item {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+            display: flex;
+            align-items: center;
+        }
+
+        .status-item span {
+            margin-right: 8px;
+        }
+
+        .active-gesture {
+            color: #00ffff;
+            text-shadow: 0 0 5px cyan;
+        }
+
+        /* 左下角输入面板 */
+        .control-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(20, 20, 30, 0.9);
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 20px;
+            width: 250px;
+            backdrop-filter: blur(5px);
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-label {
+            font-size: 12px;
+            color: #aaa;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            background: #000;
+            border: 1px solid #444;
+            color: white;
+            padding: 8px;
+            border-radius: 5px;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus {
+            border-color: #00ffff;
+        }
+
+        .tips {
+            font-size: 10px;
+            color: #555;
+            margin-top: 5px;
+        }
+    </style>
+    <!-- 引入 MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils@0.6.1629159509/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
+    <!-- 备用CDN -->
+    <script>
+        // 如果主CDN加载失败，尝试备用方案
+        window.addEventListener('error', function(e) {
+            if (e.target && e.target.tagName === 'SCRIPT' && e.target.src.includes('mediapipe')) {
+                console.warn('MediaPipe CDN加载失败，尝试备用方案');
+            }
+        }, true);
+    </script>
+</head>
+<body>
+
+    <!-- 视频输入 (隐藏) -->
+    <video id="input_video" autoplay playsinline muted></video>
+    
+    <!-- 粒子画布 -->
+    <canvas id="canvas"></canvas>
+
+    <!-- 状态面板 -->
+    <div class="status-panel">
+        <div class="status-title" id="gesture-status">等待手势...</div>
+        <div class="status-item" id="g-one">👆 单指: 第一个字</div>
+        <div class="status-item" id="g-two">✌️ 双指: 第二个字</div>
+        <div class="status-item" id="g-open">🖐 张手: 变爱心</div>
+        <div class="status-item" id="g-fist">✊ 握拳: 爆炸表白</div>
+    </div>
+
+    <!-- 控制面板 -->
+    <div class="control-panel">
+        <div class="input-group">
+            <label class="input-label">名字 (两个字效果最佳)</label>
+            <input type="text" id="nameInput" value="王标" maxlength="4">
+        </div>
+        <div class="input-group">
+            <label class="input-label">表白内容</label>
+            <input type="text" id="msgInput" value="我永远爱你">
+        </div>
+        <div class="tips">* 鼠标悬停输入框可修改内容</div>
+    </div>
+    
+    <!-- 调试按钮 -->
+    <div class="debug-toggle" id="debugToggle" onclick="toggleDebug()">🔍 显示摄像头</div>
+
+    <script>
+        /**
+         * 1. 初始化设置
+         */
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementById('input_video');
+        
+        let width, height;
+        let particles = [];
+        const particleCount = 3000; // 粒子总数（增加以提高清晰度）
+        const friction = 0.1; // 缓动系数
+        let currentGesture = 'NONE';
+        
+        // 用户自定义内容
+        let config = {
+            name: "王标",
+            message: "我永远爱你"
+        };
+
+        // 绑定输入框事件
+        document.getElementById('nameInput').addEventListener('input', (e) => {
+            config.name = e.target.value || " ";
+            if(currentGesture === 'ONE' || currentGesture === 'TWO') updateTargetShape(currentGesture);
+        });
+        document.getElementById('msgInput').addEventListener('input', (e) => {
+            config.message = e.target.value || " ";
+            if(currentGesture === 'FIST') updateTargetShape('FIST');
+        });
+
+        // 调整画布大小
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', () => {
+            resize();
+            // 窗口大小改变时重新初始化粒子位置
+            particles.forEach(p => {
+                if (p.x > width) p.x = width;
+                if (p.y > height) p.y = height;
+                if (p.tx > width) p.tx = width;
+                if (p.ty > height) p.ty = height;
+            });
+        });
+        resize(); // 先初始化尺寸
+
+        /**
+         * 2. 粒子系统
+         */
+        class Particle {
+            constructor() {
+                this.x = Math.random() * width;
+                this.y = Math.random() * height;
+                this.tx = this.x; // 目标X
+                this.ty = this.y; // 目标Y
+                this.color = 'rgba(0, 255, 255, 0.8)';
+                this.size = 2.5; // 稍微增大粒子尺寸以提高可见度
+                this.vx = 0;
+                this.vy = 0;
+            }
+
+            update() {
+                // 简单的物理缓动
+                const dx = this.tx - this.x;
+                const dy = this.ty - this.y;
+                
+                this.vx += dx * 0.05;
+                this.vy += dy * 0.05;
+                this.vx *= 0.8; // 摩擦力
+                this.vy *= 0.8;
+
+                this.x += this.vx;
+                this.y += this.vy;
+            }
+
+            draw() {
+                // 使用圆形粒子，看起来更柔和
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size / 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 初始化粒子池（在resize之后）
+        function initParticles() {
+            particles = [];
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle());
+            }
+            // 初始化为IDLE状态
+            updateTargetShape('IDLE');
+        }
+        initParticles();
+
+        /**
+         * 3. 形状生成逻辑 (文字/心形)
+         */
+        
+        // 辅助：获取文字的像素点坐标
+        function getTextPoints(text, targetFontSize) {
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width;
+            tempCanvas.height = height;
+            const tCtx = tempCanvas.getContext('2d');
+            
+            // 动态调整字体大小，确保文字完整显示
+            let fontSize = targetFontSize;
+            let textWidth, textHeight;
+            let maxAttempts = 10;
+            
+            do {
+                tCtx.font = `bold ${fontSize}px "Microsoft YaHei", "SimHei", "Arial", sans-serif`;
+                const metrics = tCtx.measureText(text);
+                textWidth = metrics.width;
+                textHeight = fontSize * 1.2; // 估算高度
+                
+                // 如果文字太大，缩小字体
+                if (textWidth > width * 0.9 || textHeight > height * 0.9) {
+                    fontSize *= 0.9;
+                    maxAttempts--;
+                } else {
+                    break;
+                }
+            } while (maxAttempts > 0 && fontSize > 20);
+            
+            // 清除画布
+            tCtx.clearRect(0, 0, width, height);
+            
+            // 设置文字样式
+            tCtx.font = `bold ${fontSize}px "Microsoft YaHei", "SimHei", "Arial", sans-serif`;
+            tCtx.fillStyle = '#ffffff';
+            tCtx.textAlign = 'center';
+            tCtx.textBaseline = 'middle';
+            
+            // 绘制文字
+            tCtx.fillText(text, width / 2, height / 2);
+
+            // 获取像素数据
+            const imageData = tCtx.getImageData(0, 0, width, height).data;
+            const points = [];
+            
+            // 根据字体大小动态调整采样步长，字体越大步长越小
+            const step = fontSize > 200 ? 2 : (fontSize > 100 ? 3 : 4);
+
+            for (let y = 0; y < height; y += step) {
+                for (let x = 0; x < width; x += step) {
+                    const index = (y * width + x) * 4;
+                    // 检查alpha通道，确保是文字像素
+                    if (imageData[index + 3] > 128) {
+                        points.push({ x: x, y: y });
+                    }
+                }
+            }
+            
+            console.log(`文字 "${text}" 渲染完成: 字体大小=${fontSize.toFixed(0)}px, 采样点数=${points.length}`);
+            return points;
+        }
+
+        // 辅助：获取心形坐标
+        function getHeartPoints(count, scale) {
+            const points = [];
+            for (let i = 0; i < count; i++) {
+                // 心形参数方程
+                const t = Math.random() * Math.PI * 2;
+                // 16sin^3(t)
+                const x = 16 * Math.pow(Math.sin(t), 3);
+                // 13cos(t) - 5cos(2t) - 2cos(3t) - cos(4t)
+                const y = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                
+                points.push({
+                    x: width / 2 + x * scale,
+                    y: height / 2 + y * scale
+                });
+            }
+            return points;
+        }
+
+        // 更新粒子目标状态
+        function updateTargetShape(type) {
+            let points = [];
+            let color = 'rgba(0, 255, 255, 0.8)'; // 默认青色
+
+            if (type === 'IDLE') {
+                // 散乱星空
+                particles.forEach(p => {
+                    p.tx = Math.random() * width;
+                    p.ty = Math.random() * height;
+                    p.color = 'rgba(0, 255, 255, 0.3)';
+                });
+                return;
+            }
+
+            if (type === 'ONE') {
+                // 名字第一个字 - 使用较大的字体，但会自动调整确保完整显示
+                const char = config.name.charAt(0) || "?";
+                const maxFontSize = Math.min(width, height) * 0.6; // 最大不超过屏幕的60%
+                points = getTextPoints(char, maxFontSize);
+            } else if (type === 'TWO') {
+                // 名字第二个字 (如果只有一个字，就显示那个字)
+                const char = config.name.length > 1 ? config.name.charAt(1) : config.name.charAt(0);
+                const maxFontSize = Math.min(width, height) * 0.6;
+                points = getTextPoints(char, maxFontSize);
+            } else if (type === 'HEART') {
+                // 爱心
+                points = getHeartPoints(particleCount, 15);
+                color = 'rgba(255, 50, 100, 0.9)'; // 红色
+            } else if (type === 'FIST') {
+                // 爆炸表白：根据文字长度动态调整字体大小
+                const messageLength = config.message.length;
+                // 长文字用较小字体，短文字用较大字体
+                let fontSize = Math.min(width, height) * 0.15; // 基础大小
+                if (messageLength > 6) {
+                    fontSize = Math.min(width, height) * 0.12; // 长文字更小
+                } else if (messageLength <= 3) {
+                    fontSize = Math.min(width, height) * 0.2; // 短文字更大
+                }
+                points = getTextPoints(config.message, fontSize);
+                color = 'rgba(255, 200, 50, 0.9)'; // 金色
+            }
+
+            // 分配目标点给粒子
+            if (points.length > 0) {
+                // 如果点数少于粒子数，需要重复使用点
+                // 如果点数多于粒子数，随机选择点
+                const pointCount = points.length;
+                
+                particles.forEach((p, i) => {
+                    let target;
+                    if (pointCount >= particleCount) {
+                        // 点数足够，均匀分配
+                        const index = Math.floor((i / particleCount) * pointCount);
+                        target = points[Math.min(index, pointCount - 1)];
+                    } else {
+                        // 点数不够，循环使用并添加随机偏移
+                        target = points[i % pointCount];
+                        // 添加小的随机偏移，让粒子分布更自然
+                        const offset = 2;
+                        target = {
+                            x: target.x + (Math.random() - 0.5) * offset,
+                            y: target.y + (Math.random() - 0.5) * offset
+                        };
+                    }
+                    
+                    p.tx = target.x;
+                    p.ty = target.y;
+                    p.color = color;
+                    
+                    // 如果是爆炸模式，给个随机扰动增加动感
+                    if (type === 'FIST') {
+                        p.tx += (Math.random() - 0.5) * 3;
+                        p.ty += (Math.random() - 0.5) * 3;
+                    }
+                });
+                
+                console.log(`粒子分配完成: ${points.length}个目标点, ${particleCount}个粒子`);
+            } else {
+                console.warn('没有生成任何目标点！');
+            }
+        }
+
+        /**
+         * 4. MediaPipe 手势识别逻辑
+         */
+        
+        function detectGesture(landmarks) {
+            // 改进的手指判断逻辑
+            // 使用指尖到手腕的距离来判断手指是否伸出
+            
+            const wrist = landmarks[0];
+            
+            // 计算每个手指的指尖到手腕的距离
+            const getDistance = (p1, p2) => {
+                return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+            };
+            
+            // 拇指：比较指尖(4)和指关节(3)到手腕的距离
+            const thumbTipDist = getDistance(landmarks[4], wrist);
+            const thumbPipDist = getDistance(landmarks[3], wrist);
+            const thumbIsOpen = thumbTipDist > thumbPipDist * 1.1;
+            
+            // 其他手指：比较指尖(TIP)和指关节(PIP)的y坐标
+            // 对于正常手势，指尖应该在指关节上方（y值更小）
+            const indexIsOpen = landmarks[8].y < landmarks[6].y - 0.02;
+            const middleIsOpen = landmarks[12].y < landmarks[10].y - 0.02;
+            const ringIsOpen = landmarks[16].y < landmarks[14].y - 0.02;
+            const pinkyIsOpen = landmarks[20].y < landmarks[18].y - 0.02;
+
+            let fingersCount = 0;
+            if (indexIsOpen) fingersCount++;
+            if (middleIsOpen) fingersCount++;
+            if (ringIsOpen) fingersCount++;
+            if (pinkyIsOpen) fingersCount++;
+
+            // 调试信息（可在控制台查看）
+            if (window.debugMode) {
+                console.log('手指状态:', {
+                    thumb: thumbIsOpen,
+                    index: indexIsOpen,
+                    middle: middleIsOpen,
+                    ring: ringIsOpen,
+                    pinky: pinkyIsOpen,
+                    count: fingersCount
+                });
+            }
+
+            // 逻辑判定（按优先级）
+            // 1. 握拳：所有手指都收起
+            if (!indexIsOpen && !middleIsOpen && !ringIsOpen && !pinkyIsOpen && !thumbIsOpen) {
+                return 'FIST';
+            }
+            
+            // 2. 单指：只有食指伸出
+            if (indexIsOpen && !middleIsOpen && !ringIsOpen && !pinkyIsOpen) {
+                return 'ONE';
+            }
+            
+            // 3. 双指：食指和中指伸出
+            if (indexIsOpen && middleIsOpen && !ringIsOpen && !pinkyIsOpen) {
+                return 'TWO';
+            }
+            
+            // 4. 张手：3个或更多手指伸出（包括拇指）
+            if (fingersCount >= 3 || (fingersCount >= 2 && thumbIsOpen)) {
+                return 'OPEN';
+            }
+            
+            return 'IDLE';
+        }
+
+        function onResults(results) {
+            let newGesture = 'IDLE';
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                // 只取第一只手
+                const landmarks = results.multiHandLandmarks[0];
+                newGesture = detectGesture(landmarks);
+                
+                // 更新状态显示（即使手势没变，也显示检测到的手）
+                const statusText = document.getElementById('gesture-status');
+                if (newGesture === 'IDLE') {
+                    statusText.innerText = "检测到手势，但未识别";
+                }
+            } else {
+                // 没有检测到手
+                const statusText = document.getElementById('gesture-status');
+                statusText.innerText = "等待手势... (请将手放在摄像头前)";
+            }
+
+            // 状态切换
+            if (newGesture !== currentGesture) {
+                currentGesture = newGesture;
+                
+                // 更新UI高亮
+                document.querySelectorAll('.status-item').forEach(el => el.classList.remove('active-gesture'));
+                const statusText = document.getElementById('gesture-status');
+                
+                if (currentGesture === 'ONE') {
+                    document.getElementById('g-one').classList.add('active-gesture');
+                    statusText.innerText = "识别: 单指";
+                    updateTargetShape('ONE');
+                } else if (currentGesture === 'TWO') {
+                    document.getElementById('g-two').classList.add('active-gesture');
+                    statusText.innerText = "识别: 双指";
+                    updateTargetShape('TWO');
+                } else if (currentGesture === 'OPEN') {
+                    document.getElementById('g-open').classList.add('active-gesture');
+                    statusText.innerText = "识别: 张手 (爱心)";
+                    updateTargetShape('HEART');
+                } else if (currentGesture === 'FIST') {
+                    document.getElementById('g-fist').classList.add('active-gesture');
+                    statusText.innerText = "识别: 握拳 (表白)";
+                    updateTargetShape('FIST');
+                } else {
+                    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                        statusText.innerText = "检测到手势，但未识别";
+                    } else {
+                        statusText.innerText = "等待手势...";
+                    }
+                    updateTargetShape('IDLE');
+                }
+            }
+        }
+
+        /**
+         * 5. 启动与渲染循环
+         */
+        
+        // 渲染循环
+        function animate() {
+            // 确保width和height已初始化
+            if (width && height) {
+                // 拖尾效果：不完全清除画布，覆盖一层半透明黑色
+                ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
+                ctx.fillRect(0, 0, width, height);
+
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+            }
+
+            requestAnimationFrame(animate);
+        }
+        animate();
+
+        // 备用方法：直接使用getUserMedia初始化摄像头
+        let handsInstance = null;
+        async function initCameraDirectly() {
+            try {
+                console.log('尝试直接初始化摄像头...');
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }
+                });
+                
+                videoElement.srcObject = stream;
+                
+                // 等待视频元数据加载
+                await new Promise((resolve) => {
+                    if (videoElement.readyState >= 2) {
+                        resolve();
+                    } else {
+                        videoElement.addEventListener('loadedmetadata', resolve, { once: true });
+                    }
+                });
+                
+                // 开始播放
+                await videoElement.play();
+                
+                console.log('直接初始化摄像头成功，视频尺寸:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+                
+                // 如果MediaPipe已经初始化，开始处理视频帧
+                if (handsInstance) {
+                    console.log('开始使用备用方法处理视频帧...');
+                    function processFrame() {
+                        if (videoElement.readyState >= 2) {
+                            handsInstance.send({image: videoElement});
+                        }
+                        requestAnimationFrame(processFrame);
+                    }
+                    processFrame();
+                }
+                
+                return true;
+            } catch (err) {
+                console.error('直接初始化摄像头失败:', err);
+                return false;
+            }
+        }
+        
+        // 初始化 MediaPipe Hands（等待页面加载完成）
+        function initMediaPipe() {
+            console.log('开始初始化 MediaPipe...');
+            console.log('Hands:', typeof Hands);
+            console.log('Camera:', typeof Camera);
+            console.log('navigator.mediaDevices:', typeof navigator.mediaDevices);
+            
+            if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+                console.error('MediaPipe 库未加载，请检查网络连接');
+                const statusText = document.getElementById('gesture-status');
+                statusText.innerText = "MediaPipe 库加载失败，请刷新页面";
+                statusText.style.color = '#ff4444';
+                alert('MediaPipe 库加载失败，请检查网络连接或刷新页面重试。');
+                return;
+            }
+            
+            // 检查是否支持getUserMedia
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.error('浏览器不支持摄像头API');
+                const statusText = document.getElementById('gesture-status');
+                statusText.innerText = "浏览器不支持摄像头，请使用Chrome或Edge";
+                statusText.style.color = '#ff4444';
+                alert('您的浏览器不支持摄像头功能，请使用Chrome或Edge浏览器。');
+                return;
+            }
+
+            console.log('创建 Hands 实例...');
+            const hands = new Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+            }});
+            
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5, // 降低检测阈值，更容易检测
+                minTrackingConfidence: 0.5
+            });
+            
+            hands.onResults(onResults);
+            handsInstance = hands; // 保存实例供备用方法使用
+            console.log('Hands 配置完成');
+
+            console.log('创建 Camera 实例...');
+            
+            // 确保视频元素有必要的属性
+            videoElement.setAttribute('autoplay', '');
+            videoElement.setAttribute('playsinline', '');
+            videoElement.setAttribute('muted', '');
+            videoElement.setAttribute('webkit-playsinline', '');
+            
+            // 添加视频加载事件监听
+            videoElement.addEventListener('loadedmetadata', () => {
+                console.log('视频元数据加载完成，尺寸:', videoElement.videoWidth, 'x', videoElement.videoHeight);
+            });
+            
+            videoElement.addEventListener('playing', () => {
+                console.log('视频开始播放！');
+                const statusText = document.getElementById('gesture-status');
+                statusText.innerText = "摄像头已启动，请将手放在摄像头前";
+                statusText.style.color = '#00ffff';
+            });
+            
+            videoElement.addEventListener('error', (e) => {
+                console.error('视频元素错误:', e);
+            });
+            
+            const camera = new Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 640,
+                height: 480
+            });
+            
+            console.log('启动摄像头...');
+            camera.start().then(() => {
+                console.log('Camera.start() 调用成功');
+                
+                // 等待一下，检查视频是否真的在播放
+                setTimeout(() => {
+                    if (videoElement.readyState >= 2 && videoElement.videoWidth > 0) { // HAVE_CURRENT_DATA
+                        console.log('摄像头启动成功！视频状态:', {
+                            readyState: videoElement.readyState,
+                            paused: videoElement.paused,
+                            width: videoElement.videoWidth,
+                            height: videoElement.videoHeight,
+                            srcObject: !!videoElement.srcObject
+                        });
+                        const statusText = document.getElementById('gesture-status');
+                        statusText.innerText = "摄像头已启动，请将手放在摄像头前";
+                        statusText.style.color = '#00ffff';
+                    } else {
+                        console.warn('摄像头可能未正常启动，尝试备用方法...');
+                        console.log('视频状态:', {
+                            readyState: videoElement.readyState,
+                            paused: videoElement.paused,
+                            width: videoElement.videoWidth,
+                            height: videoElement.videoHeight,
+                            srcObject: !!videoElement.srcObject
+                        });
+                        
+                        // 尝试备用方法
+                        initCameraDirectly().then(success => {
+                            if (success) {
+                                const statusText = document.getElementById('gesture-status');
+                                statusText.innerText = "摄像头已启动（备用方法），请将手放在摄像头前";
+                                statusText.style.color = '#00ffff';
+                            } else {
+                                const statusText = document.getElementById('gesture-status');
+                                statusText.innerText = "摄像头启动失败，请检查权限";
+                                statusText.style.color = '#ff4444';
+                            }
+                        });
+                    }
+                }, 1000);
+                
+                // 3秒后恢复默认颜色
+                setTimeout(() => {
+                    const statusText = document.getElementById('gesture-status');
+                    if (statusText.style.color === 'rgb(0, 255, 255)') {
+                        statusText.style.color = '';
+                    }
+                }, 3000);
+            }).catch(err => {
+                console.error("摄像头启动失败:", err);
+                console.log('尝试使用备用方法初始化摄像头...');
+                
+                // 尝试备用方法
+                initCameraDirectly().then(success => {
+                    if (success) {
+                        const statusText = document.getElementById('gesture-status');
+                        statusText.innerText = "摄像头已启动（备用方法），请将手放在摄像头前";
+                        statusText.style.color = '#00ffff';
+                    } else {
+                        const statusText = document.getElementById('gesture-status');
+                        statusText.innerText = "摄像头启动失败，请检查权限";
+                        statusText.style.color = '#ff4444';
+                        alert("无法启动摄像头，请确保在 HTTPS 或 Localhost 环境下运行，并允许摄像头权限。\n错误信息: " + err.message);
+                    }
+                });
+            });
+        }
+
+        // 等待MediaPipe库加载完成
+        function checkAndInit() {
+            if (typeof Hands !== 'undefined' && typeof Camera !== 'undefined') {
+                initMediaPipe();
+            } else {
+                console.log('等待 MediaPipe 库加载...');
+                setTimeout(checkAndInit, 200);
+            }
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                setTimeout(checkAndInit, 500);
+            });
+        } else {
+            setTimeout(checkAndInit, 500);
+        }
+        
+        // 添加调试模式开关（在控制台输入 window.debugMode = true 可开启）
+        window.debugMode = false;
+        
+        // 切换调试视图
+        function toggleDebug() {
+            const video = document.getElementById('input_video');
+            const toggle = document.getElementById('debugToggle');
+            if (video.classList.contains('debug')) {
+                video.classList.remove('debug');
+                toggle.innerText = '🔍 显示摄像头';
+            } else {
+                video.classList.add('debug');
+                toggle.innerText = '❌ 隐藏摄像头';
+                // 确保视频在调试模式下可见
+                if (video.readyState >= 2) {
+                    console.log('调试模式：视频尺寸', video.videoWidth, 'x', video.videoHeight);
+                } else {
+                    console.warn('调试模式：视频尚未加载');
+                }
+            }
+        }
+        
+        // 全局暴露调试函数
+        window.toggleDebug = toggleDebug;
+
+    </script>
+</body>
+</html>
