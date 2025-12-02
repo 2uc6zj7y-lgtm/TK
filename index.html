@@ -367,6 +367,27 @@
             return points;
         }
 
+        function getNameTextForGesture(type) {
+            const name = (config.name || '').trim();
+            if (!name) return '?';
+            
+            const chars = Array.from(name); // 支持emoji/特殊字符
+            const len = chars.length;
+            
+            if (len === 1) {
+                return chars[0];
+            } else if (len === 2) {
+                return type === 'ONE' ? chars[0] : chars[1];
+            } else if (len === 3) {
+                return type === 'ONE' ? chars[0] : chars.slice(1).join('');
+            } else {
+                // 4个及以上：前两个 & 后两个
+                const firstTwo = chars.slice(0, 2).join('');
+                const lastTwo = chars.slice(-2).join('');
+                return type === 'ONE' ? firstTwo : lastTwo;
+            }
+        }
+
         // 更新粒子目标状态
         function updateTargetShape(type) {
             let points = [];
@@ -383,13 +404,13 @@
             }
 
             if (type === 'ONE') {
-                // 名字第一个字 - 使用较大的字体，但会自动调整确保完整显示
-                const char = config.name.charAt(0) || "?";
+                // 名字前半部分（根据字数动态决定）
+                const char = getNameTextForGesture('ONE');
                 const maxFontSize = Math.min(width, height) * 0.6; // 最大不超过屏幕的60%
                 points = getTextPoints(char, maxFontSize);
             } else if (type === 'TWO') {
-                // 名字第二个字 (如果只有一个字，就显示那个字)
-                const char = config.name.length > 1 ? config.name.charAt(1) : config.name.charAt(0);
+                // 名字后半部分
+                const char = getNameTextForGesture('TWO');
                 const maxFontSize = Math.min(width, height) * 0.6;
                 points = getTextPoints(char, maxFontSize);
             } else if (type === 'HEART') {
